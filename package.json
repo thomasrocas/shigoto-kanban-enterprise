@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "api": "node server.mjs",
-    "dev:all": "concurrently \"npm run api\" \"npm run dev -- --host 127.0.0.1 --port 5173\"",
+    "dev:all": "concurrently \"npm run api\" \"npm run dev -- --host 127.0.0.1 --port 5273\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
