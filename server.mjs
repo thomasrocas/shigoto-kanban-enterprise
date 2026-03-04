@@ -4,8 +4,8 @@ import fs from 'fs/promises'
 import path from 'path'
 
 const app = express()
-const PORT = 4173
-const DATA_PATH = path.resolve(process.cwd(), '../kanban-data.json')
+const PORT = Number(process.env.PORT || 4273)
+const DATA_PATH = path.resolve(process.cwd(), process.env.KANBAN_DATA_PATH || './kanban-data.local.json')
 
 const emptyColumns = {
   todo: [],
