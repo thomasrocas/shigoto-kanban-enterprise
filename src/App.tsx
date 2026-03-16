@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Archive,
   BellRing,
+  BarChart2,
   LayoutGrid,
   Menu,
   Plus,
@@ -170,9 +171,11 @@ function App() {
   const [archiveFrom, setArchiveFrom] = useState('')
   const [archiveTo, setArchiveTo] = useState('')
 
-  const [view, setView] = useState<'active' | 'archived'>(() => {
+  const [view, setView] = useState<'active' | 'archived' | 'executive'>(() => {
     const p = new URLSearchParams(window.location.search)
-    return p.get('view') === 'archived' ? 'archived' : 'active'
+    if (p.get('view') === 'archived') return 'archived'
+    if (p.get('view') === 'executive') return 'executive'
+    return 'active'
   })
 
   const board = data.columns
@@ -517,6 +520,11 @@ function App() {
           )}
         </button>
 
+        <button className={view === 'executive' ? 'active' : ''} onClick={() => setView('executive')}>
+          <BarChart2 size={16} />
+          {!sidebarCollapsed && <span>Executive</span>}
+        </button>
+
         <button onClick={() => setProjectsOpen(true)}>
           <LayoutGrid size={16} />
           {!sidebarCollapsed && <span>Projects</span>}
@@ -538,7 +546,9 @@ function App() {
           </div>
         </header>
 
-        {view === 'active' ? (
+        {view === 'executive' ? (
+          <ExecutiveDashboard data={data} />
+        ) : view === 'active' ? (
           <>
             <section className="composer">
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" />
@@ -1268,6 +1278,141 @@ function ProjectsModal({
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Executive Dashboard ──────────────────────────────────────────────────────
+
+function ExecutiveDashboard({ data }: { data: BoardState }) {
+  const now = new Date()
+  const hour = now.getHours()
+  const isAM = hour < 12
+  const todayStr = now.toISOString().split('T')[0]
+
+  const allActive = Object.values(data.columns).flat()
+
+  const overdue = allActive.filter(
+    (t) => t.dueDate && t.dueDate < todayStr && !['done'].includes(
+      (Object.entries(data.columns).find(([, tasks]) => tasks.some((x) => x.id === t.id))?.[0] ?? '')
+    )
+  )
+  const dueToday = allActive.filter((t) => t.dueDate === todayStr)
+  const highPriority = allActive.filter((t) => t.priority === 'High')
+  const inProgress = data.columns.doing
+  const inReview = data.columns.review
+  const blockers = overdue.filter((t) => t.priority === 'High')
+
+  const decisions: { label: string; tasks: Task[] }[] = [
+    { label: '🚨 Overdue High Priority', tasks: blockers },
+    { label: '📋 Due Today', tasks: dueToday },
+    { label: '⚡ High Priority Active', tasks: highPriority.filter((t) => !dueToday.includes(t)) },
+  ]
+
+  const exportSummary = () => {
+    const lines = [
+      `# Executive ${isAM ? 'AM' : 'PM'} Brief — ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
+      '',
+      `## Status Snapshot`,
+      `- In Progress: ${inProgress.length} tasks`,
+      `- In Review: ${inReview.length} tasks`,
+      `- Due Today: ${dueToday.length} tasks`,
+      `- Overdue: ${overdue.length} tasks`,
+      `- High Priority Total: ${highPriority.length} tasks`,
+      '',
+      `## Decision Queue`,
+      ...decisions.flatMap(({ label, tasks }) =>
+        tasks.length ? [`### ${label}`, ...tasks.map((t) => `- ${t.title}${t.owner ? ` (${t.owner})` : ''}`), ''] : []
+      ),
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `executive-brief-${todayStr}.md`
+    a.click()
+  }
+
+  return (
+    <section className="executive-dashboard">
+      <header className="exec-header">
+        <div>
+          <h2>{isAM ? '☀️ AM Brief' : '🌙 PM Closeout'}</h2>
+          <p>{now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <button className="primary" onClick={exportSummary}>
+          Export Summary
+        </button>
+      </header>
+
+      <div className="exec-stats">
+        <div className="exec-stat">
+          <span className="exec-stat-value">{inProgress.length}</span>
+          <span className="exec-stat-label">In Progress</span>
+        </div>
+        <div className="exec-stat">
+          <span className="exec-stat-value">{inReview.length}</span>
+          <span className="exec-stat-label">In Review</span>
+        </div>
+        <div className="exec-stat exec-stat-warn">
+          <span className="exec-stat-value">{dueToday.length}</span>
+          <span className="exec-stat-label">Due Today</span>
+        </div>
+        <div className="exec-stat exec-stat-danger">
+          <span className="exec-stat-value">{overdue.length}</span>
+          <span className="exec-stat-label">Overdue</span>
+        </div>
+        <div className="exec-stat">
+          <span className="exec-stat-value">{highPriority.length}</span>
+          <span className="exec-stat-label">High Priority</span>
+        </div>
+        <div className="exec-stat">
+          <span className="exec-stat-value">{data.archived.length}</span>
+          <span className="exec-stat-label">Archived</span>
+        </div>
+      </div>
+
+      <div className="exec-decisions">
+        <h3>Decision Queue</h3>
+        {decisions.every(({ tasks }) => tasks.length === 0) ? (
+          <p className="timeline-empty">✅ No decisions required — board is clean.</p>
+        ) : (
+          decisions.map(({ label, tasks }) =>
+            tasks.length > 0 ? (
+              <div key={label} className="exec-decision-group">
+                <h4>{label}</h4>
+                <ul>
+                  {tasks.map((t) => (
+                    <li key={t.id}>
+                      <strong>{t.title}</strong>
+                      {t.owner && <span className="exec-owner"> · {t.owner}</span>}
+                      {t.dueDate && <span className="exec-due"> · Due {t.dueDate}</span>}
+                      {t.description && <p className="exec-desc">{t.description}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null
+          )
+        )}
+      </div>
+
+      {isAM ? null : (
+        <div className="exec-carryover">
+          <h3>Carryover</h3>
+          {inProgress.length === 0 ? (
+            <p className="timeline-empty">Nothing carried over — good close.</p>
+          ) : (
+            <ul>
+              {inProgress.map((t) => (
+                <li key={t.id}>
+                  <strong>{t.title}</strong>
+                  {t.owner && <span className="exec-owner"> · {t.owner}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 
