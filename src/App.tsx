@@ -303,8 +303,16 @@ function App() {
     setSettingsOpen(false)
   }
 
-  function saveProjects(next: Project[]) {
-    void persist({ ...data, projects: next })
+  function saveProjects(next: Project[], deletedIds?: string[]) {
+    const updatedColumns: Board = { ...data.columns }
+    if (deletedIds?.length) {
+      for (const col of Object.keys(updatedColumns) as ColumnId[]) {
+        updatedColumns[col] = updatedColumns[col].map((t) =>
+          deletedIds.includes(t.projectId ?? '') ? { ...t, projectId: undefined } : t
+        )
+      }
+    }
+    void persist({ ...data, projects: next, columns: updatedColumns })
     setProjectsOpen(false)
   }
 
@@ -743,7 +751,7 @@ function App() {
           />
         )}
         {projectsOpen && (
-          <ProjectsModal projects={data.projects} onClose={() => setProjectsOpen(false)} onSave={saveProjects} />
+          <ProjectsModal projects={data.projects} onClose={() => setProjectsOpen(false)} onSave={(next, deletedIds) => saveProjects(next, deletedIds)} />
         )}
       </main>
     </div>
@@ -1209,10 +1217,11 @@ function ProjectsModal({
   onClose,
 }: {
   projects: Project[]
-  onSave: (projects: Project[]) => void
+  onSave: (projects: Project[], deletedIds: string[]) => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<Project[]>(projects)
+  const [deletedIds, setDeletedIds] = useState<string[]>([])
   const [name, setName] = useState('')
   const [org, setOrg] = useState<Organization>('home-health')
 
@@ -1224,6 +1233,11 @@ function ProjectsModal({
 
   function updateProject(id: string, patch: Partial<Project>) {
     setDraft(draft.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+  }
+
+  function deleteProject(id: string) {
+    setDraft(draft.filter((p) => p.id !== id))
+    setDeletedIds((prev) => [...prev, id])
   }
 
   return (
@@ -1253,6 +1267,14 @@ function ProjectsModal({
                   <option value="hospice">Hospice</option>
                   <option value="ligare">Ligare</option>
                 </select>
+                <button
+                  className="ghost"
+                  title="Delete project (tasks will be unlinked)"
+                  onClick={() => deleteProject(p.id)}
+                  style={{ color: 'var(--color-danger, #e53e3e)', padding: '0.25rem 0.5rem' }}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
           ))}
@@ -1262,7 +1284,7 @@ function ProjectsModal({
           <button className="ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="primary" onClick={() => onSave(draft)}>
+          <button className="primary" onClick={() => onSave(draft, deletedIds)}>
             Save projects
           </button>
         </div>
